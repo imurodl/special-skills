@@ -2,7 +2,7 @@
 
 Hand this whole file to your Claude Code agent and say: *"Help me set this up, one section at a time. Skip anything I don't need."*
 
-It's a battle-tested config distilled from a friend's setup. Nothing here contains their private data — every server IP, key, or account ID has been replaced with a `<PLACEHOLDER>`. Fill in your own or delete what doesn't apply.
+It's a battle-tested config distilled from a working setup. Nothing here contains private data — every server IP, key, or account ID has been replaced with a `<PLACEHOLDER>`. Fill in your own or delete what doesn't apply.
 
 ---
 
@@ -216,6 +216,8 @@ Also nice: **`caveman`** (ultra-compressed replies to save tokens), **`write-a-s
 
 Install tool-specific skills only if you use the tool: `notebooklm`, `obsidian-vault`, `slides-grab*`.
 
+> **Slash-invoke anything.** Any skill can be triggered explicitly with `/<skill-name>` (e.g. `/diagnose`, `/caveman`), not just by auto-detection. Handy when you want to force a specific workflow.
+
 ---
 
 ## 6. Advanced / optional — Headroom context compression
@@ -233,9 +235,97 @@ This is the most involved piece and easy to get wrong — treat it as a "graduat
 
 ---
 
-## 7. Persistent memory (built in — just use it)
+## 7. Persistent memory ⭐ — teach Claude once, remember forever
 
-Claude Code can keep durable facts across sessions in a `memory/` folder with a `MEMORY.md` index. You don't install anything — just tell Claude *"remember that ..."* and it writes a memory file. Good for: your preferences, project goals, recurring corrections. Keep secrets out of it.
+Claude Code keeps durable facts across sessions in a `memory/` folder indexed by a `MEMORY.md` file that loads every session. You don't install anything — but knowing the **format** turns this from a toy into a real second brain.
+
+**One fact per file.** Each memory file uses frontmatter + a short body:
+
+```markdown
+---
+name: <short-kebab-case-slug>
+description: <one-line summary — used to decide relevance during recall>
+metadata:
+  type: user | feedback | project | reference
+---
+
+<the fact. For feedback/project, add **Why:** and **How to apply:** lines.
+Link related memories with [[their-slug]].>
+```
+
+The four `type`s, and when to use each:
+
+| type | Stores | Example |
+|---|---|---|
+| `user` | Who you are — role, stack, preferences | "Prefers `bun` over `npm`; ships Next.js + NestJS." |
+| `feedback` | Corrections / confirmed ways of working (include the *why*) | "Don't summarize at the end of responses. **Why:** noise. **How to apply:** stop after the answer." |
+| `project` | Ongoing work, goals, constraints not in the code | "Migrating prod to a new host by <date>; old one decommissioned." |
+| `reference` | Pointers to external stuff (URLs, dashboards, tickets) | "Deploy dashboard: <url>" |
+
+**The index (`MEMORY.md`)** holds only one line per memory — a title, a link, and a hook — never the content itself:
+
+```markdown
+# Memory index
+- [Deploy workflow](deploy-workflow.md) — pm2 + nginx + certbot on the prod box
+```
+
+Rules that make it work well:
+- **Convert relative dates to absolute** before saving ("next Friday" → the actual date).
+- **Don't save what the repo already records** (code structure, past fixes, git history, existing CLAUDE.md).
+- **Link liberally** with `[[slug]]` — even to memories you haven't written yet; it marks them as worth writing.
+- **Update, don't duplicate** — if a fact changes, edit the existing file; delete memories that turn out wrong.
+
+To use it, just say *"remember that ..."* and let Claude write the file — or, better, tell it the workflow you keep repeating and let it capture that as a `feedback` memory.
+
+---
+
+## 8. Hooks beyond notifications
+
+Hooks run shell commands on lifecycle events. Notifications (§2) are the friendly intro; the powerful uses are **guardrails** and **session bootstrap**.
+
+- **`PreToolUse`** — inspect/gate a tool call before it runs. Pair with the **`git-guardrails`** skill to block destructive git (`push --force`, `reset --hard`, `clean -fd`, `branch -D`) before it executes.
+- **`SessionStart`** (matcher `startup|resume`) — run setup when a session opens: warm a cache, print a repo cheat-sheet, start a proxy, `git fetch`.
+- **`Stop` / `Notification`** — desktop alerts so you can walk away from long runs (already covered).
+
+Keep hook commands fast and `timeout`-bounded — they run inline and a slow hook stalls the turn.
+
+---
+
+## 9. Fewer permission prompts (`settings.local.json`)
+
+Auto mode aside, you can pre-approve safe, read-only commands so Claude stops asking. In your **private** `settings.local.json`:
+
+```json
+{
+  "permissions": {
+    "allow": [
+      "Bash(gh auth:*)",
+      "Bash(gh api:*)",
+      "Bash(gh repo:*)",
+      "Bash(brew install:*)",
+      "Bash(npm install:*)",
+      "WebSearch",
+      "WebFetch(domain:github.com)"
+    ]
+  }
+}
+```
+
+Add only commands you're comfortable running unattended. There's also a **`/fewer-permission-prompts`** helper that scans your history and proposes a tailored allowlist.
+
+---
+
+## 10. Daily workflow habits (the part config can't do)
+
+The setup is only half of it. Habits that pay off:
+
+- **Plan before big changes.** Use plan mode (or the `Plan` agent) for anything multi-file; approve the plan, *then* let it build.
+- **Delegate lookups to subagents.** "Find where X is handled" → spawn an `Explore`/Haiku agent so the file dumps stay out of your main context. Cheaper and keeps your window clean.
+- **`/code-review` before you commit.** Catches correctness + cleanup issues on your working diff.
+- **`/security-review`** on anything touching auth, uploads, or external input.
+- **`/handoff` when context gets full** (watch the statusline bar) — compacts the session so a fresh window picks up cleanly.
+- **`/caveman` when you're burning tokens** on a long session and don't need prose.
+- **Let it remember.** When you correct Claude the same way twice, tell it to save that as a `feedback` memory (§7) so you never repeat it.
 
 ---
 
@@ -245,7 +335,8 @@ Claude Code can keep durable facts across sessions in a `memory/` folder with a 
 2. Drop in `statusline.js` + the `settings.json` block (model, effort, statusline, notification hooks).
 3. `/plugin` install the official plugins you'll use.
 4. Install the Matt Pocock skill suite; run `setup-matt-pocock-skills` in a repo.
-5. Later, if needed: Headroom.
+5. Learn the memory format (§7) — it compounds over weeks.
+6. Add guardrail hooks + a permission allowlist once you know your common commands.
+7. Later, if needed: Headroom.
 
 Start at step 1 and stop whenever you've got enough. Everything after the CLAUDE.md files is optional polish.
-```
